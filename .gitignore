@@ -1,0 +1,9 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# 라이브러리를 커밋하지 않으려면 아래 주석을 해제 (CDN 폴백으로 동작)
+# lib/*.js

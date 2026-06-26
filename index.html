@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Local PDF Toolkit — 업로드 없는 로컬 PDF 편집기</title>
+<meta name="description" content="브라우저 안에서만 처리하는(zero-upload) PDF 도구 — 이미지→PDF, 전자서명(배경 자동 제거), 합치기·순서변경·회전·가리기. 파일이 서버로 전송되지 않습니다.">
+<meta name="theme-color" content="#161c22">
+<meta property="og:title" content="Local PDF Toolkit">
+<meta property="og:description" content="업로드 없이 브라우저에서 처리하는 PDF 편집기. 병합·정렬·전자서명·회전·가리기.">
+<meta property="og:type" content="website">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<header>
+  <h1>로컬 PDF 도구</h1>
+  <span class="sub">offline · 파일은 기기를 벗어나지 않음</span>
+  <span class="net" id="net">엔진 로딩…</span>
+</header>
+
+<nav role="tablist">
+  <button role="tab" aria-selected="true" data-tab="t-img"><span class="n">01</span>이미지 → PDF</button>
+  <button role="tab" aria-selected="false" data-tab="t-sign"><span class="n">02</span>전자서명</button>
+  <button role="tab" aria-selected="false" data-tab="t-big"><span class="n">03</span>편집 · 정렬</button>
+</nav>
+
+<main>
+  <!-- ===================== TAB 1: IMAGES -> PDF ===================== -->
+  <section class="panel" id="t-img" data-active>
+    <p class="lead">이미지 여러 장을 한 PDF로 묶는다. 카드를 드래그해 순서를 바꾸고, 페이지 크기를 정한 뒤 내보낸다.</p>
+    <div class="drop" id="img-drop">
+      <strong>이미지를 끌어다 놓거나 클릭해서 선택</strong>
+      <span class="hint">JPG · PNG · WEBP · GIF · 여러 장 동시 선택</span>
+      <input type="file" id="img-input" accept="image/*" multiple class="hidden">
+    </div>
+
+    <div class="controls hidden" id="img-controls">
+      <div class="field">
+        <label>페이지 크기</label>
+        <select id="img-size">
+          <option value="fit">이미지 비율 그대로</option>
+          <option value="a4p">A4 세로</option>
+          <option value="a4l">A4 가로</option>
+          <option value="letterp">Letter 세로</option>
+        </select>
+      </div>
+      <div class="field" id="img-margin-field">
+        <label>여백(pt)</label>
+        <input type="number" id="img-margin" value="0" min="0" max="200" step="2">
+      </div>
+      <div class="spacer"></div>
+      <span class="count" id="img-count">0장</span>
+      <button class="btn ghost" id="img-clear">모두 지우기</button>
+      <button class="btn primary" id="img-build" disabled>PDF 만들기</button>
+    </div>
+
+    <div class="grid" id="img-grid"></div>
+  </section>
+
+  <!-- ===================== TAB 2: SIGNATURE ===================== -->
+  <section class="panel" id="t-sign">
+    <p class="lead">PDF 위에 서명(또는 도장) 이미지를 얹는다. 서명을 고르고 페이지를 클릭하면 찍힌다. 드래그로 위치, 모서리 점으로 크기 조절.</p>
+    <div class="drop" id="sign-drop">
+      <strong>서명할 PDF를 끌어다 놓거나 클릭해서 선택</strong>
+      <span class="hint">PDF 1개</span>
+      <input type="file" id="sign-pdf-input" accept="application/pdf" class="hidden">
+    </div>
+
+    <div class="controls hidden" id="sign-controls">
+      <div class="spacer"></div>
+      <span class="count" id="sign-stat"></span>
+      <button class="btn ghost" id="sign-reset">다시 불러오기</button>
+      <button class="btn primary" id="sign-build" disabled>서명 적용해 내보내기</button>
+    </div>
+
+    <div class="sign-wrap hidden" id="sign-wrap">
+      <aside class="rail">
+        <h3>서명 이미지</h3>
+        <div class="sig-list" id="sig-list"></div>
+        <button class="btn" id="sig-add" style="width:100%">＋ 서명 추가 (PNG/JPG)</button>
+        <input type="file" id="sig-input" accept="image/png,image/jpeg" multiple class="hidden">
+        <div id="sig-opts" class="hidden">
+          <span class="ttl">선택한 서명 처리</span>
+          <label class="ko-toggle"><input type="checkbox" id="sig-knockout"> 흰 배경 투명 처리</label>
+          <div class="ko-row" id="sig-thresh-row"><span>민감도</span>
+            <input type="range" id="sig-thresh" min="8" max="120" value="45"></div>
+          <div class="ko-prev"><span>결과</span><img id="sig-ko-img" alt=""></div>
+        </div>
+        <p class="tip" style="margin-top:12px">흰 배경 스캔/사진도 OK — 위 "흰 배경 투명 처리"가 배경을 자동으로 날린다.<br>① 서명 선택 → ② 페이지 클릭 → ③ 드래그·리사이즈.</p>
+      </aside>
+      <div class="pages" id="sign-pages"></div>
+    </div>
+  </section>
+
+  <!-- ===================== TAB 4: LARGE-FILE EDIT (no thumbnails) ===================== -->
+  <section class="panel" id="t-big">
+    <p class="lead">큰 PDF(수백 페이지)를 가볍게 편집한다. 썸네일을 안 그려 메모리를 거의 안 쓴다 — 페이지는 목록으로만 보이고, 줄을 클릭하면 그 한 장만 오른쪽에 렌더된다. 여러 PDF를 떨어뜨리면 이어붙고, 드래그로 순서 변경·삭제 가능.</p>
+    <div class="drop" id="big-drop">
+      <strong>PDF를 끌어다 놓거나 클릭해서 선택</strong>
+      <span class="hint">여러 개 가능 · 추가로 더 떨어뜨리면 이어붙음</span>
+      <input type="file" id="big-input" accept="application/pdf" multiple class="hidden">
+    </div>
+
+    <div class="sources hidden" id="big-sources"></div>
+
+    <div class="controls hidden" id="big-controls">
+      <div class="spacer"></div>
+      <span class="count" id="big-count"></span>
+      <button class="btn ghost" id="big-restore">원래 순서로</button>
+      <button class="btn primary" id="big-build" disabled>PDF 내보내기</button>
+    </div>
+
+    <div class="ord-wrap hidden" id="big-wrap">
+      <div class="plist" id="big-list"></div>
+      <aside class="ord-preview">
+        <div class="ph"><h3>미리보기 · 편집</h3><button class="flip" id="big-flip">↔ 위치</button></div>
+        <div class="ptools hidden" id="big-tools">
+          <button id="big-rot-l" title="왼쪽 90°">⟲ 90°</button>
+          <button id="big-rot-r" title="오른쪽 90°">⟳ 90°</button>
+          <button id="big-erase" title="드래그해 흰색으로 가리기">지우개</button>
+          <button id="big-undo" title="가리기 한 단계 취소">되돌리기</button>
+          <button id="big-clear-edit" title="이 페이지 편집 초기화">초기화</button>
+        </div>
+        <div id="big-prev-cap"></div>
+        <div class="prev-canvas-box">
+          <div class="prev-stage" id="big-stage">
+            <canvas id="big-prev-canvas" class="hidden"></canvas>
+            <div class="rubber hidden" id="big-rubber"></div>
+          </div>
+          <div class="prev-empty" id="big-prev-empty">줄을 클릭하면<br>여기에 크게 표시됩니다</div>
+        </div>
+      </aside>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<!-- bootstrap: 라이브러리 로컬(./lib) 우선, 실패 시 CDN 폴백 -> app.js 로드 -->
+<script>
+(function(){
+  var LIBS=[
+    {local:'./lib/pdf-lib.min.js', cdn:'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js'},
+    {local:'./lib/pdf.min.js',     cdn:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'}
+  ];
+  function loadOne(lib){
+    return new Promise(function(res){
+      var s=document.createElement('script'); s.src=lib.local;
+      s.onload=function(){ lib.fromLocal=true; res(); };
+      s.onerror=function(){
+        var c=document.createElement('script'); c.src=lib.cdn;
+        c.onload=function(){ lib.fromLocal=false; res(); };
+        c.onerror=function(){ res(); };
+        document.head.appendChild(c);
+      };
+      document.head.appendChild(s);
+    });
+  }
+  (async function(){
+    for (var i=0;i<LIBS.length;i++) await loadOne(LIBS[i]);
+    if (window.pdfjsLib){
+      pdfjsLib.GlobalWorkerOptions.workerSrc = LIBS[1].fromLocal
+        ? './lib/pdf.worker.min.js'
+        : 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    var app=document.createElement('script'); app.src='./app.js'; document.head.appendChild(app);
+  })();
+})();
+</script>
+</body>
+</html>
